@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Path Finder Visualizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+
+        #grid {
+            display: grid;
+            margin: 20px auto;
+            grid-template-columns: repeat(25, 20px);
+            gap: 1px;
+        }
+
+        .cell {
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border: 1px solid #ddd;
+            box-sizing: border-box;
+        }
+
+        .start {
+            background-color: green;
+        }
+
+        .end {
+            background-color: red;
+        }
+
+        .wall {
+            background-color: black;
+        }
+
+        .visited {
+            background-color: lightblue;
+            animation: fadeIn 0.3s;
+        }
+
+        .path {
+            background-color: yellow;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .button-container {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Path Finder Visualizer</h1>
+    <p>Click on cells to set Start (green), End (red), and Walls (black). Then choose an algorithm to visualize!</p>
+    <div class="button-container">
+        <button onclick="visualize('aStar')">Visualize A*</button>
+        <button onclick="visualize('dijkstra')">Visualize Dijkstra</button>
+        <button onclick="visualize('bfs')">Visualize BFS</button>
+        <button onclick="visualize('dfs')">Visualize DFS</button>
+        <button onclick="clearGrid()">Clear Grid</button>
+    </div>
+    <div id="grid"></div>
+
+    <script>
+
+        const disableButtons = () => {
+            document.querySelectorAll('button').forEach(button => button.disabled = true);
+        };
+
+        const enableButtons = () => {
+            document.querySelectorAll('button').forEach(button => button.disabled = false);
+        };
+
+        const rows = 25;
+        const cols = 25;
+        const grid = document.getElementById('grid');
+        let startNode = null;
+        let endNode = null;
+
+        const createGrid = () => {
+            grid.style.gridTemplateColumns = `repeat(${cols}, 20px)`;
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.addEventListener('click', () => handleCellClick(cell));
+                    grid.appendChild(cell);
+                }
+            }
+        };
+
+        const handleCellClick = (cell) => {
+            if (!startNode) {
+                startNode = cell;
+                cell.classList.add('start');
+            } else if (!endNode) {
+                endNode = cell;
+                cell.classList.add('end');
+            } else {
+                cell.classList.toggle('wall');
+            }
+        };
+
+        const heuristic = (a, b) => {
+            return Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
+        };
+
+        const getNeighbors = (node) => {
+            const neighbors = [];
+            const { row, col } = node;
+            if (row > 0) neighbors.push({ row: row - 1, col });
+            if (row < rows - 1) neighbors.push({ row: row + 1, col });
+            if (col > 0) neighbors.push({ row, col: col - 1 });
+            if (col < cols - 1) neighbors.push({ row, col: col + 1 });
+            return neighbors;
+        };
+
+        const visualize = async (algorithm) => {
+            if (!startNode || !endNode) {
+                alert('Please select both a start and an end node.');
+                return;
+            }
+
+            const start = {
+                row: parseInt(startNode.dataset.row),
+                col: parseInt(startNode.dataset.col)
+            };
+            const end = {
+                row: parseInt(endNode.dataset.row),
+                col: parseInt(endNode.dataset.col)
+            };
+
+            // Reset visited and path cells
+            document.querySelectorAll('.visited').forEach(cell => cell.classList.remove('visited'));
+            document.querySelectorAll('.path').forEach(cell => cell.classList.remove('path'));
+
+            switch (algorithm) {
+                case 'aStar':
+                    await visualizeAStar(start, end);
+                    break;
+                case 'dijkstra':
+                    await visualizeDijkstra(start, end);
+                    break;
+                case 'bfs':
+                    await visualizeBFS(start, end);
+                    break;
+                case 'dfs':
+                    await visualizeDFS(start, end);
+                    break;
+                default:
+                    alert('Invalid algorithm selected.');
+            }
+        };
+
+        const visualizeAStar = async (start, end) => {
+            disableButtons();
+            const openSet = [start];
+            const cameFrom = {};
+            const gScore = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
+            const fScore = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
+
+            gScore[start.row][start.col] = 0;
+            fScore[start.row][start.col] = heuristic(start, end);
+
+            while (openSet.length > 0) {
+                openSet.sort((a, b) => fScore[a.row][a.col] - fScore[b.row][b.col]);
+                const current = openSet.shift();
+
+                if (current.row === end.row && current.col === end.col) {
+                    await reconstructPath(cameFrom, current);
+                    enableButtons();
+                    return;
+                }
+
+                const currentCell = document.querySelector(
+                    `.cell[data-row='${current.row}'][data-col='${current.col}']`
+                );
+                if (!currentCell.classList.contains('start') && !currentCell.classList.contains('end')) {
+                    currentCell.classList.add('visited');
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                for (const neighbor of getNeighbors(current)) {
+                    const neighborCell = document.querySelector(
+                        `.cell[data-row='${neighbor.row}'][data-col='${neighbor.col}']`
+                    );
+                    if (neighborCell.classList.contains('wall') ||
+                        neighborCell.classList.contains('visited')) {
+                        continue;
+                    }
+
+                    const tentativeGScore = gScore[current.row][current.col] + 1;
+                    if (tentativeGScore < gScore[neighbor.row][neighbor.col]) {
+                        cameFrom[`${neighbor.row},${neighbor.col}`] = current;
+                        gScore[neighbor.row][neighbor.col] = tentativeGScore;
+                        fScore[neighbor.row][neighbor.col] =
+                            tentativeGScore + heuristic(neighbor, end);
+
+                        if (!openSet.some(
+                            n => n.row === neighbor.row && n.col === neighbor.col
+                        )) {
+                            openSet.push(neighbor);
+                        }
+                    }
+                }
+            }
+
+            alert('No path found!');
+            enableButtons();
+        };
+
+        const visualizeDijkstra = async (start, end) => {
+            disableButtons();
+            const distances = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
+            const cameFrom = {};
+            const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+            const priorityQueue = [{ ...start, distance: 0 }];
+
+            distances[start.row][start.col] = 0;
+
+            while (priorityQueue.length > 0) {
+                priorityQueue.sort((a, b) => a.distance - b.distance);
+                const current = priorityQueue.shift();
+
+                if (visited[current.row][current.col]) continue;
+                visited[current.row][current.col] = true;
+
+                if (current.row === end.row && current.col === end.col) {
+                    await reconstructPath(cameFrom, current);
+                    enableButtons();
+                    return;
+                }
+
+                const currentCell = document.querySelector(
+                    `.cell[data-row='${current.row}'][data-col='${current.col}']`
+                );
+                if (!currentCell.classList.contains('start') && !currentCell.classList.contains('end')) {
+                    currentCell.classList.add('visited');
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                for (const neighbor of getNeighbors(current)) {
+                    const neighborCell = document.querySelector(
+                        `.cell[data-row='${neighbor.row}'][data-col='${neighbor.col}']`
+                    );
+                    if (neighborCell.classList.contains('wall')) continue;
+
+                    const newDist = distances[current.row][current.col] + 1;
+                    if (newDist < distances[neighbor.row][neighbor.col]) {
+                        distances[neighbor.row][neighbor.col] = newDist;
+                        cameFrom[`${neighbor.row},${neighbor.col}`] = current;
+                        priorityQueue.push({ ...neighbor, distance: newDist });
+                    }
+                }
+            }
+
+            alert('No path found!');
+            enableButtons();
+        };
+
+        const visualizeBFS = async (start, end) => {
+            disableButtons();
+            const queue = [start];
+            const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+            const cameFrom = {};
+
+            visited[start.row][start.col] = true;
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+
+                if (current.row === end.row && current.col === end.col) {
+                    await reconstructPath(cameFrom, current);
+                    enableButtons();
+                    return;
+                }
+
+                const currentCell = document.querySelector(
+                    `.cell[data-row='${current.row}'][data-col='${current.col}']`
+                );
+                if (!currentCell.classList.contains('start') && !currentCell.classList.contains('end')) {
+                    currentCell.classList.add('visited');
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                for (const neighbor of getNeighbors(current)) {
+                    const neighborCell = document.querySelector(
+                        `.cell[data-row='${neighbor.row}'][data-col='${neighbor.col}']`
+                    );
+                    if (
+                        visited[neighbor.row][neighbor.col] ||
+                        neighborCell.classList.contains('wall')
+                    ) {
+                        continue;
+                    }
+
+                    visited[neighbor.row][neighbor.col] = true;
+                    cameFrom[`${neighbor.row},${neighbor.col}`] = current;
+                    queue.push(neighbor);
+                }
+            }
+
+            alert('No path found!');
+            enableButtons();
+        };
+
+        const visualizeDFS = async (start, end) => {
+            disableButtons();
+            const stack = [start];
+            const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+            const cameFrom = {};
+
+            while (stack.length > 0) {
+                const current = stack.pop();
+
+                if (visited[current.row][current.col]) continue;
+                visited[current.row][current.col] = true;
+
+                if (current.row === end.row && current.col === end.col) {
+                    await reconstructPath(cameFrom, current);
+                    enableButtons();
+                    return;
+                }
+
+                const currentCell = document.querySelector(
+                    `.cell[data-row='${current.row}'][data-col='${current.col}']`
+                );
+                if (!currentCell.classList.contains('start') && !currentCell.classList.contains('end')) {
+                    currentCell.classList.add('visited');
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                for (const neighbor of getNeighbors(current)) {
+                    const neighborCell = document.querySelector(
+                        `.cell[data-row='${neighbor.row}'][data-col='${neighbor.col}']`
+                    );
+                    if (
+                        visited[neighbor.row][neighbor.col] ||
+                        neighborCell.classList.contains('wall')
+                    ) {
+                        continue;
+                    }
+
+                    cameFrom[`${neighbor.row},${neighbor.col}`] = current;
+                    stack.push(neighbor);
+                }
+            }
+
+            alert('No path found!');
+            enableButtons();
+        };
+
+        const reconstructPath = async (cameFrom, current) => {
+            const path = [];
+            while (current) {
+                path.push(current);
+                current = cameFrom[`${current.row},${current.col}`];
+            }
+            path.reverse();
+            for (const node of path) {
+                const nodeCell = document.querySelector(
+                    `.cell[data-row='${node.row}'][data-col='${node.col}']`
+                );
+                nodeCell.classList.add('path');
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+        };
+
+        const clearGrid = () => {
+            location.reload();
+        };
+        createGrid();
+    </script>
+</body>
+</html>
